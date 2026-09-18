@@ -21,6 +21,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(LOD_PLATFORM_SWITCH "Build for Nintendo Switch" OFF)
+if (LOD_PLATFORM_SWITCH AND NOT CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    message(FATAL_ERROR
+        "LOD_PLATFORM_SWITCH requires the Switch toolchain. Configure with:\n"
+        "  cmake -S . -B build-switch -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-switch.cmake")
+endif()
+
 configure_file(
     ${CMAKE_SOURCE_DIR}/src/main/lod_version.h.in
     ${CMAKE_CURRENT_BINARY_DIR}/lod_version.h
@@ -50,6 +57,10 @@ set(RT64_SDL_WINDOW_VULKAN TRUE)
 add_compile_definitions(HLSL_CPU)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
+
+if (LOD_PLATFORM_SWITCH)
+    set_target_properties(nfd PROPERTIES LINKER_LANGUAGE CXX)
+endif()
 
 # ── lunasvg + RmlUi (required by rt64 build chain) ──────────────────
 set(BUILD_SHARED_LIBS OFF)
