@@ -1,0 +1,41 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 006e93a..fb48f05 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -66,7 +66,11 @@ set(ZSTD_LEGACY_SUPPORT OFF)
+ set(ZSTD_BUILD_STATIC ON)
+ set(ZSTD_BUILD_SHARED OFF)
+ 
+-add_subdirectory(src/tools/file_to_c)
++# A superproject that cross-compiles may inject these tools as imported host
++# executables before adding rt64.
++if (NOT TARGET file_to_c)
++    add_subdirectory(src/tools/file_to_c)
++endif()
+ add_subdirectory(src/contrib/re-spirv)
+ add_subdirectory(src/contrib/nativefiledialog-extended)
+ add_subdirectory(src/contrib/zstd/build/cmake)
+@@ -444,12 +448,20 @@ target_link_libraries(rt64 libzstd_static)
+ target_link_libraries(rt64 plume)
+ 
+ # Add tools.
+-add_subdirectory(src/tools/texture_hasher)
+-add_subdirectory(src/tools/texture_packer)
++# A superproject that cross-compiles may inject these tools as imported host
++# executables before adding rt64.
++if (NOT TARGET texture_hasher)
++    add_subdirectory(src/tools/texture_hasher)
++endif()
++if (NOT TARGET texture_packer)
++    add_subdirectory(src/tools/texture_packer)
++endif()
+ 
+ # Add any Apple-specific source files and libraries
+ if (APPLE)
+-    add_subdirectory(src/tools/spirv_cross_msl)
++    if (NOT TARGET spirv_cross_msl)
++        add_subdirectory(src/tools/spirv_cross_msl)
++    endif()
+ 
+     target_sources(rt64 PRIVATE
+         "${PROJECT_SOURCE_DIR}/src/apple/rt64_apple.mm"

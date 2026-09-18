@@ -51,6 +51,9 @@ endif()
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
+include(${CMAKE_SOURCE_DIR}/cmake/host-tools.cmake)
+lod_setup_host_tools()
+
 # ── rt64 ─────────────────────────────────────────────────────────────
 set(RT64_STATIC TRUE)
 set(RT64_SDL_WINDOW_VULKAN TRUE)
