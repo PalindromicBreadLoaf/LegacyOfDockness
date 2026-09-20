@@ -1,8 +1,18 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 006e93a..fb48f05 100644
+index 006e93a..310c465 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -66,7 +66,11 @@ set(ZSTD_LEGACY_SUPPORT OFF)
+@@ -62,11 +62,21 @@ else()
+     endif()
+ endif()
+ 
++# The selection above describes the target. A superproject that cross-compiles
++# supplies a DXC that runs on the build machine; it must win.
++if (RT64_HOST_DXC)
++    set (DXC ${RT64_HOST_DXC})
++endif()
++
+ set(ZSTD_LEGACY_SUPPORT OFF)
  set(ZSTD_BUILD_STATIC ON)
  set(ZSTD_BUILD_SHARED OFF)
  
@@ -15,7 +25,7 @@ index 006e93a..fb48f05 100644
  add_subdirectory(src/contrib/re-spirv)
  add_subdirectory(src/contrib/nativefiledialog-extended)
  add_subdirectory(src/contrib/zstd/build/cmake)
-@@ -444,12 +448,20 @@ target_link_libraries(rt64 libzstd_static)
+@@ -444,12 +454,20 @@ target_link_libraries(rt64 libzstd_static)
  target_link_libraries(rt64 plume)
  
  # Add tools.

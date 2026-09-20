@@ -54,6 +54,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 include(${CMAKE_SOURCE_DIR}/cmake/host-tools.cmake)
 lod_setup_host_tools()
 
+include(${CMAKE_SOURCE_DIR}/cmake/host-dxc.cmake)
+lod_setup_host_dxc()
+
 # ── rt64 ─────────────────────────────────────────────────────────────
 set(RT64_STATIC TRUE)
 set(RT64_SDL_WINDOW_VULKAN TRUE)
@@ -680,6 +683,12 @@ else()
     else()
         set(DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/arm64/dxc-linux")
     endif()
+endif()
+
+# The selection above keys off the target; in a cross build DXC still has to run
+# on the build machine. See cmake/host-dxc.cmake.
+if (RT64_HOST_DXC)
+    set(DXC ${RT64_HOST_DXC})
 endif()
 
 if (LOD_USE_ZELDA_MENU AND WIN32)
