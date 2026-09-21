@@ -76,7 +76,9 @@
 #include "librecomp/game.hpp"
 #include "librecomp/overlays.hpp"
 #include "librecomp/rsp.hpp"
+#ifndef __SWITCH__
 #include "nfd.h"
+#endif
 
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
@@ -2613,6 +2615,14 @@ static const char* rom_validation_error_name(recomp::RomValidationError error) {
     return "ROM validation failed.";
 }
 
+#ifdef __SWITCH__
+static std::filesystem::path prompt_for_rom_path() {
+    fprintf(stderr,
+            "[LodRecomp] No file dialog on Switch. Place the ROM at "
+            "sdmc:/switch/lodrecomp/rom.z64.\n");
+    return {};
+}
+#else
 static std::filesystem::path prompt_for_rom_path() {
     fprintf(stderr,
             "[LodRecomp] Asking user to select a stock LoD ROM.\n");
@@ -2664,6 +2674,7 @@ static std::filesystem::path prompt_for_rom_path() {
     NFD_Quit();
     return selected;
 }
+#endif // __SWITCH__
 
 static std::filesystem::path discover_rom_path(const std::filesystem::path& config_path) {
     // Check command line argument first

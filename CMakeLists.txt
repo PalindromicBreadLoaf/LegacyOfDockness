@@ -28,6 +28,10 @@ if (LOD_PLATFORM_SWITCH AND NOT CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
         "  cmake -S . -B build-switch -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-switch.cmake")
 endif()
 
+if (LOD_PLATFORM_SWITCH)
+    add_compile_definitions(_DEFAULT_SOURCE)
+endif()
+
 configure_file(
     ${CMAKE_SOURCE_DIR}/src/main/lod_version.h.in
     ${CMAKE_CURRENT_BINARY_DIR}/lod_version.h
@@ -57,6 +61,18 @@ lod_setup_host_tools()
 include(${CMAKE_SOURCE_DIR}/cmake/host-dxc.cmake)
 lod_setup_host_dxc()
 
+if (LOD_PLATFORM_SWITCH)
+    include(${CMAKE_SOURCE_DIR}/cmake/switch-link.cmake)
+    if (CMAKE_VERSION VERSION_LESS 3.24)
+        message(FATAL_ERROR
+            "The Switch build needs CMake 3.24+ for CMAKE_FIND_PACKAGE_TARGETS_GLOBAL "
+            "(found ${CMAKE_VERSION}).")
+    endif()
+    set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL TRUE)
+    find_package(SDL2 REQUIRED)
+    lod_switch_strip_sdl2_mesa_gl()
+endif()
+
 # ── rt64 ─────────────────────────────────────────────────────────────
 set(RT64_STATIC TRUE)
 set(RT64_SDL_WINDOW_VULKAN TRUE)
@@ -65,12 +81,15 @@ add_compile_definitions(HLSL_CPU)
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
 
 if (LOD_PLATFORM_SWITCH)
-    set_target_properties(nfd PROPERTIES LINKER_LANGUAGE CXX)
+    target_sources(nfd PRIVATE ${CMAKE_SOURCE_DIR}/src/platform/switch/nfd_stub.cpp)
 endif()
 
 # ── lunasvg + RmlUi (required by rt64 build chain) ──────────────────
 set(BUILD_SHARED_LIBS OFF)
 SET(LUNASVG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+if (LOD_PLATFORM_SWITCH)
+    SET(PLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD ON CACHE BOOL "" FORCE)
+endif()
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/lunasvg)
 
 SET(RMLUI_SVG_PLUGIN ON CACHE BOOL "" FORCE)
@@ -80,6 +99,15 @@ target_compile_definitions(rmlui_core PRIVATE LUNASVG_BUILD_STATIC)
 
 # ── N64ModernRuntime (ultramodern + librecomp) ──────────────────────
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime)
+
+if (LOD_PLATFORM_SWITCH)
+    target_compile_definitions(ultramodern PUBLIC __unix__=1)
+    target_compile_definitions(LiveRecomp PRIVATE SLJIT_HAVE_CONFIG_PRE=1)
+    target_include_directories(LiveRecomp BEFORE PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/platform/switch/sljit)
+    target_sources(LiveRecomp PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/platform/switch/sljit_exec_stub.c)
+endif()
 
 target_include_directories(rt64 PRIVATE ${CMAKE_BINARY_DIR}/rt64/src)
 
@@ -616,6 +644,16 @@ if (WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR")
 endif()
 
+# ── Platform: Nintendo Switch ───────────────────────────────────────
+if (LOD_PLATFORM_SWITCH)
+    target_include_directories(LodRecomp PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(LodRecomp PRIVATE SDL2::SDL2)
+
+    lod_switch_add_link_support(LodRecomp)
+
+    lod_switch_link_nxvk(LodRecomp)
+endif()
+
 # ── Link everything ─────────────────────────────────────────────────
 find_package(ZLIB REQUIRED)
 if (APPLE AND CMAKE_OSX_SYSROOT AND TARGET ZLIB::ZLIB)
@@ -657,6 +695,18 @@ add_dependencies(LodRecomp LodRecompAssets)
 add_subdirectory(${CMAKE_SOURCE_DIR}/tests/sanity ${CMAKE_BINARY_DIR}/tests/sanity)
 add_subdirectory(${CMAKE_SOURCE_DIR}/tests/dl_harness ${CMAKE_BINARY_DIR}/tests/dl_harness)
 add_subdirectory(${CMAKE_SOURCE_DIR}/tests/pak ${CMAKE_BINARY_DIR}/tests/pak)
+
+option(LOD_SWITCH_BUILD_LINK_PROBE "Build the Switch SDL2+nxvk link probe .nro" OFF)
+if (LOD_PLATFORM_SWITCH AND LOD_SWITCH_BUILD_LINK_PROBE)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/tests/switch_link_probe
+        ${CMAKE_BINARY_DIR}/tests/switch_link_probe)
+endif()
+
+option(LOD_SWITCH_BUILD_BRINGUP "Build the Switch bring-up .nro (S1.8/M1)" OFF)
+if (LOD_PLATFORM_SWITCH AND LOD_SWITCH_BUILD_BRINGUP)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/tests/switch_bringup
+        ${CMAKE_BINARY_DIR}/tests/switch_bringup)
+endif()
 
 # ── DXC shader compilation (required by rt64) ───────────────────────
 set(DXC_COMMON_OPTS "-I${PROJECT_SOURCE_DIR}/src")

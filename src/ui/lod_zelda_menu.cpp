@@ -41,7 +41,9 @@
 #include "promptfont.h"
 #include "ultramodern/config.hpp"
 #include "ultramodern/ultramodern.hpp"
+#ifndef __SWITCH__
 #include "nfd.h"
+#endif
 
 extern uint8_t* rdram_ptr_for_debug;
 extern "C" uint32_t lod_current_map_overlay_rom();
@@ -141,6 +143,7 @@ std::mutex g_file_dialog_mutex;
 std::deque<FileDialogRequest> g_file_dialog_requests;
 bool g_file_dialog_active = false;
 
+#ifndef __SWITCH__
 std::string default_file_dialog_path() {
 #ifdef _WIN32
     const char* home = std::getenv("USERPROFILE");
@@ -158,6 +161,7 @@ std::string default_file_dialog_path() {
 
     return {};
 }
+#endif // __SWITCH__
 
 bool enqueue_file_dialog_request(FileDialogRequest&& request) {
     std::lock_guard lock{g_file_dialog_mutex};
@@ -169,6 +173,15 @@ bool enqueue_file_dialog_request(FileDialogRequest&& request) {
     return true;
 }
 
+#ifdef __SWITCH__
+FileDialogResult run_single_rom_file_dialog() {
+    return FileDialogResult{};
+}
+
+FileDialogResult run_multiple_file_dialog() {
+    return FileDialogResult{};
+}
+#else
 FileDialogResult run_single_rom_file_dialog() {
     FileDialogResult dialog_result;
 
@@ -229,6 +242,7 @@ FileDialogResult run_multiple_file_dialog() {
     NFD_Quit();
     return dialog_result;
 }
+#endif // __SWITCH__
 
 void queue_file_dialog_completion(FileDialogRequest request, FileDialogResult result) {
     if (request.mode == FileDialogMode::SingleRom && request.single_callback) {
