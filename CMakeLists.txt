@@ -651,6 +651,16 @@ if (LOD_PLATFORM_SWITCH)
     target_include_directories(LodRecomp PRIVATE ${SDL2_INCLUDE_DIRS})
     target_link_libraries(LodRecomp PRIVATE SDL2::SDL2)
 
+    target_sources(LodRecomp PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/platform/switch/lod_switch.cpp
+        ${CMAKE_SOURCE_DIR}/src/platform/switch/mem_compat.cpp
+    )
+
+    set(LOD_SWITCH_HEAP_MB "0" CACHE STRING "newlib heap cap on Switch in MiB; 0 = the loader's whole heap")
+    target_compile_definitions(LodRecomp PRIVATE LOD_SWITCH_HEAP_MB=${LOD_SWITCH_HEAP_MB})
+
+    target_link_options(LodRecomp PRIVATE -Wl,--allow-multiple-definition)
+
     lod_switch_add_link_support(LodRecomp)
 
     lod_switch_link_nxvk(LodRecomp)
@@ -692,6 +702,18 @@ add_custom_target(LodRecompAssets
     COMMENT "Copying LodRecomp runtime assets"
 )
 add_dependencies(LodRecomp LodRecompAssets)
+
+if (LOD_PLATFORM_SWITCH)
+    nx_generate_nacp(LodRecomp.nacp
+        NAME "Castlevania: Legacy of Darkness Recompiled"
+        AUTHOR "PalindromicBreadLoaf"
+        VERSION "${LOD_RECOMP_VERSION}"
+    )
+    nx_create_nro(LodRecomp
+        NACP LodRecomp.nacp
+        ROMFS ${CMAKE_SOURCE_DIR}/assets
+    )
+endif()
 
 # ── Tests ────────────────────────────────────────────────────────────
 add_subdirectory(${CMAKE_SOURCE_DIR}/tests/sanity ${CMAKE_BINARY_DIR}/tests/sanity)

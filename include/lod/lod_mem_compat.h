@@ -1,4 +1,4 @@
-// Minimal POSIX memory-API compatibility layer for the Windows build.
+// Minimal POSIX memory-API compatibility layer for platforms without <sys/mman.h>.
 //
 // The LoD runtime un-guards regions of librecomp's big rdram allocation with
 // mprotect(..., PROT_READ | PROT_WRITE). librecomp allocates that region with
@@ -42,6 +42,16 @@ static inline long sysconf(int name) {
     }
     return -1;
 }
+
+#elif defined(__SWITCH__)
+
+#include <unistd.h>
+
+#define PROT_NONE  0x0
+#define PROT_READ  0x1
+#define PROT_WRITE 0x2
+
+int mprotect(void* addr, size_t len, int prot);
 
 #else
 

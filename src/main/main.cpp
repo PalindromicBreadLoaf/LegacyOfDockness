@@ -65,6 +65,7 @@
 #include "lod/lod_fault_trace.hpp"
 #include "lod/lod_paths.hpp"
 #include "lod/lod_settings.hpp"
+#include "lod/lod_switch.hpp"
 #include "lod/target_rom.hpp"
 #include "lod_ui_overlay.h"
 #include "lod_version.h"
@@ -115,11 +116,17 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
+#ifdef __SWITCH__
+    if (SDL_Init(SDL_INIT_GAMECONTROLLER) > 0) {
+        exit_error("Failed to initialize SDL2: %s\n", SDL_GetError());
+    }
+#else
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) > 0) {
         exit_error("Failed to initialize SDL2: %s\n", SDL_GetError());
     }
 
     fprintf(stdout, "SDL Video Driver: %s\n", SDL_GetCurrentVideoDriver());
+#endif
     return {};
 }
 
@@ -287,7 +294,11 @@ static void lod_short_sleep_ms(unsigned int ms) { Sleep(ms); }
 #else
 using lod_fd_t = int;
 static constexpr lod_fd_t kInvalidFd = -1;
+#ifdef __SWITCH__
+static int lod_pipe(lod_fd_t[2]) { return -1; }
+#else
 static int lod_pipe(lod_fd_t fds[2]) { return pipe(fds); }
+#endif
 static lod_fd_t lod_dup(lod_fd_t fd) { return dup(fd); }
 static int lod_dup2(lod_fd_t src, lod_fd_t dst) { return dup2(src, dst) == -1 ? -1 : 0; }
 static int lod_close(lod_fd_t fd) { return close(fd); }
@@ -476,6 +487,11 @@ static void lod_restore_fd(lod_fd_t original_fd, int target_fd) {
 }
 
 static void lod_start_session_log(const std::filesystem::path& config_path, bool portable_mode) {
+#ifdef __SWITCH__
+    (void)config_path;
+    (void)portable_mode;
+    return;
+#else
     const size_t max_kib = lod_parse_log_max_kib();
     const std::filesystem::path log_path = config_path / "LodRecomp.log";
     const std::string header = lod_make_session_log_header(config_path, portable_mode, max_kib);
@@ -538,6 +554,7 @@ static void lod_start_session_log(const std::filesystem::path& config_path, bool
 
     fprintf(stderr, "[LOG] Current-session log: %s (tail cap %zu KiB)\n",
             log_path.string().c_str(), max_kib);
+#endif // __SWITCH__
 }
 
 static void lod_session_log_crash_delay() {
@@ -1707,6 +1724,9 @@ static void close_game_controller() {
 }
 
 ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::gfx_data_t) {
+#ifdef __SWITCH__
+    return ultramodern::renderer::WindowHandle{ lod::sw::native_window() };
+#else
     uint32_t flags = SDL_WINDOW_RESIZABLE;
 
 #if defined(__APPLE__)
@@ -1737,6 +1757,7 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 #else
     static_assert(false && "Unsupported platform");
 #endif
+#endif // __SWITCH__
 }
 
 static void handle_rom_setup_requests(const std::filesystem::path& config_path);
@@ -1872,6 +1893,13 @@ void update_gfx(void*) {
 
 #ifdef LOD_USE_ZELDA_MENU
     zelda64::process_pending_file_dialogs();
+#endif
+
+#ifdef __SWITCH__
+    if (!lod::sw::applet_pump()) {
+        ultramodern::quit();
+        return;
+    }
 #endif
 
     handle_rom_setup_requests(g_config_path);
@@ -2414,14 +2442,25 @@ std::string get_game_thread_name(const OSThread* t) {
 
 void message_box_stub(const char* msg) {
     fprintf(stderr, "[ERROR] %s\n", msg);
+#ifdef __SWITCH__
+    lod::sw::show_error_message(msg);
+#else
     // Don't show modal dialog — it blocks startup and the game window
     // may not be visible yet. Just log to stderr.
+#endif
 }
 
 // ── ROM loading ─────────────────────────────────────────────────────
 
 namespace lod {
 std::filesystem::path get_runtime_rom_path() {
+#ifdef __SWITCH__
+    std::filesystem::path sd_rom = lod::sw::rom_path();
+    if (std::filesystem::exists(sd_rom)) {
+        return sd_rom;
+    }
+    return {};
+#else
     std::filesystem::path cwd_rom = "rom.z64";
     if (std::filesystem::exists(cwd_rom)) {
         return cwd_rom;
@@ -2456,6 +2495,7 @@ std::filesystem::path get_runtime_rom_path() {
 #endif
 
     return {};
+#endif // __SWITCH__
 }
 }
 
@@ -2602,6 +2642,15 @@ static std::filesystem::path find_rom_in_directory(const std::filesystem::path& 
     return {};
 }
 
+static std::string rom_missing_message(const char* lead) {
+#ifdef __SWITCH__
+    return std::string(lead) + " Copy your Legacy of Darkness ROM to " +
+           lod::sw::rom_path().string() + " and choose Retry.";
+#else
+    return std::string(lead) + " Select your ROM file to start the game.";
+#endif
+}
+
 static const char* rom_validation_error_name(recomp::RomValidationError error) {
     switch (error) {
         case recomp::RomValidationError::Good: return "Ready";
@@ -2617,9 +2666,18 @@ static const char* rom_validation_error_name(recomp::RomValidationError error) {
 
 #ifdef __SWITCH__
 static std::filesystem::path prompt_for_rom_path() {
+    for (const std::filesystem::path& dir : lod::sw::rom_search_directories()) {
+        std::filesystem::path found = find_rom_in_directory(dir);
+        if (!found.empty()) {
+            fprintf(stderr, "[LodRecomp] Found ROM on the SD card: %s\n", found.string().c_str());
+            return found;
+        }
+    }
+
     fprintf(stderr,
-            "[LodRecomp] No file dialog on Switch. Place the ROM at "
-            "sdmc:/switch/lodrecomp/rom.z64.\n");
+            "[LodRecomp] No ROM found on the SD card. Place your Legacy of Darkness "
+            "ROM at %s.\n",
+            lod::sw::rom_path().string().c_str());
     return {};
 }
 #else
@@ -2707,6 +2765,15 @@ static std::filesystem::path discover_rom_path(const std::filesystem::path& conf
         return config_rom;
     }
 
+#ifdef __SWITCH__
+    for (const std::filesystem::path& dir : lod::sw::rom_search_directories()) {
+        std::filesystem::path sd_rom = find_rom_in_directory(dir);
+        if (!sd_rom.empty()) {
+            return sd_rom;
+        }
+    }
+#endif
+
 #ifdef __APPLE__
     std::filesystem::path bundle_parent_rom = find_rom_in_directory(lod::get_bundle_directory().parent_path());
     if (!bundle_parent_rom.empty()) {
@@ -2734,7 +2801,7 @@ static std::filesystem::path discover_rom_path(const std::filesystem::path& conf
 static void validate_and_start_rom(std::filesystem::path rom_path, bool persist_selected_path, const char* source_label) {
     if (rom_path.empty()) {
         lod::ui::set_rom_setup_status("Missing",
-            "No ROM file was selected. Select your ROM file to start the game.",
+            rom_missing_message("No ROM file was selected."),
             "None selected", false);
         lod::ui::show_rom_setup();
         g_rom_validation_busy.store(false, std::memory_order_relaxed);
@@ -2796,7 +2863,7 @@ static void retry_rom_discovery(const std::filesystem::path& config_path) {
     std::filesystem::path rom_path = discover_rom_path(config_path);
     if (rom_path.empty()) {
         lod::ui::set_rom_setup_status("Missing",
-            "No valid ROM path was found automatically. Select your ROM file to start.",
+            rom_missing_message("No valid ROM path was found automatically."),
             "None selected", false);
         return;
     }
@@ -2948,6 +3015,7 @@ static LONG WINAPI crash_handler(EXCEPTION_POINTERS* ep) {
     _exit(127);
     return EXCEPTION_EXECUTE_HANDLER;
 }
+#elif defined(__SWITCH__)
 #else
 static void crash_handler(int sig, siginfo_t* info, void* ctx) {
     fprintf(stderr, "\n[CRASH] Signal %d at address %p (code=%d)\n",
@@ -3133,6 +3201,9 @@ static std::optional<std::filesystem::path> find_portable_config_path(int argc, 
 }
 
 int main(int argc, char** argv) {
+#ifdef __SWITCH__
+    lod::sw::platform_init();
+#endif
     LodCommandLineParseResult cli_parse = lod_parse_command_line(argc, argv);
     if (!cli_parse.error.empty()) {
         fprintf(stderr, "[CONFIG] %s\n\n", cli_parse.error.c_str());
@@ -3147,9 +3218,11 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
-    // Catch SIGSEGV/SIGBUS (or the SEH equivalent) to get fault address
+    // Catch SIGSEGV/SIGBUS (or the SEH/Horizon equivalent) to get fault address
 #ifdef _WIN32
     SetUnhandledExceptionFilter(crash_handler);
+#elif defined(__SWITCH__)
+    lod::sw::set_crash_reporter(report_crash_details);
 #else
     struct sigaction sa = {};
     sa.sa_sigaction = crash_handler;
@@ -3163,6 +3236,10 @@ int main(int argc, char** argv) {
     // Set up config path for ROM storage. If portable.txt exists beside the
     // executable/app (or in the launch directory), keep config and saves there.
     std::filesystem::path config_path;
+#ifdef __SWITCH__
+    config_path = lod::sw::config_directory();
+    g_portable_mode = false;
+#else
     if (auto portable_path = find_portable_config_path(argc, argv)) {
         config_path = *portable_path;
         g_portable_mode = true;
@@ -3185,6 +3262,7 @@ int main(int argc, char** argv) {
         config_path = std::filesystem::path(getenv("HOME")) / ".lodrecomp";
 #endif
     }
+#endif // __SWITCH__
     std::error_code config_dir_ec;
     std::filesystem::create_directories(config_path, config_dir_ec);
     if (config_dir_ec) {
@@ -3264,7 +3342,7 @@ int main(int argc, char** argv) {
         {
         fprintf(stderr, "[LodRecomp] No ROM found automatically; starting ROM setup UI.\n");
         lod::ui::set_rom_setup_status("Missing",
-            "No ROM was found automatically. Select your ROM file to start the game.",
+            rom_missing_message("No ROM was found automatically."),
             "None selected", false);
         lod::ui::show_rom_setup();
         }
@@ -3333,6 +3411,9 @@ int main(int argc, char** argv) {
 
     ultramodern::threads::callbacks_t threads_callbacks{
         .get_game_thread_name = get_game_thread_name,
+#ifdef __SWITCH__
+        .place_native_thread = lod::sw::place_current_thread,
+#endif
     };
 
     recomp::Configuration config{
@@ -3353,5 +3434,8 @@ int main(int argc, char** argv) {
     recomp::start(config);
 
     fprintf(stderr, "[LodRecomp] recomp::start() returned\n");
+#ifdef __SWITCH__
+    lod::sw::platform_exit();
+#endif
     return EXIT_SUCCESS;
 }

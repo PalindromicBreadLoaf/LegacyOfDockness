@@ -4,6 +4,10 @@
 #include <cstdint>
 #include <fstream>
 
+#ifdef __SWITCH__
+#include <switch.h>
+#endif
+
 #ifndef HLSL_CPU
 #define HLSL_CPU
 #endif
@@ -214,6 +218,8 @@ lod::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::W
 #elif defined(__APPLE__)
     appCore.window.window = window_handle.window;
     appCore.window.view = window_handle.view;
+#elif defined(__SWITCH__)
+    appCore.window = static_cast<NWindow*>(window_handle.window);
 #endif
 
     appCore.checkInterrupts = dummy_check_interrupts;

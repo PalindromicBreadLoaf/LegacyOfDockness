@@ -38,6 +38,7 @@
 #include "librecomp/game.hpp"
 #include "lod/lod_support.h"
 #include "lod/lod_settings.hpp"
+#include "lod/lod_switch.hpp"
 #include "promptfont.h"
 #include "ultramodern/config.hpp"
 #include "ultramodern/ultramodern.hpp"
@@ -1742,6 +1743,8 @@ bool recomp::all_input_disabled() { return g_scanning_device != InputDevice::COU
 std::filesystem::path zelda64::get_program_path() {
 #if defined(__APPLE__)
     return lod::get_bundle_resource_directory();
+#elif defined(__SWITCH__)
+    return lod::sw::asset_directory();
 #else
     char* base_path = SDL_GetBasePath();
     if (base_path != nullptr) {
@@ -1754,7 +1757,9 @@ std::filesystem::path zelda64::get_program_path() {
 }
 
 std::filesystem::path zelda64::get_asset_path(const char* asset) {
-#if defined(__APPLE__)
+#if defined(__SWITCH__)
+    return lod::sw::asset_directory() / asset;
+#elif defined(__APPLE__)
     std::filesystem::path bundled_asset = lod::get_bundle_resource_directory() / "assets" / asset;
     if (std::filesystem::exists(bundled_asset)) {
         return bundled_asset;
