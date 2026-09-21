@@ -23,6 +23,7 @@ function(lod_switch_add_link_support target)
     target_sources(${target} PRIVATE
         ${CMAKE_SOURCE_DIR}/src/platform/switch/sdl2_egl_stub.c
         ${CMAKE_SOURCE_DIR}/src/platform/switch/nvk_compat.c
+        ${CMAKE_SOURCE_DIR}/src/platform/switch/newlib_gaps.c
     )
 endfunction()
 

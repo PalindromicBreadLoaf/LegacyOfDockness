@@ -1,13 +1,11 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 006e93a..310c465 100644
+index 006e93a..c863f35 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -62,11 +62,21 @@ else()
+@@ -62,11 +62,17 @@ else()
      endif()
  endif()
  
-+# The selection above describes the target. A superproject that cross-compiles
-+# supplies a DXC that runs on the build machine; it must win.
 +if (RT64_HOST_DXC)
 +    set (DXC ${RT64_HOST_DXC})
 +endif()
@@ -17,22 +15,18 @@ index 006e93a..310c465 100644
  set(ZSTD_BUILD_SHARED OFF)
  
 -add_subdirectory(src/tools/file_to_c)
-+# A superproject that cross-compiles may inject these tools as imported host
-+# executables before adding rt64.
 +if (NOT TARGET file_to_c)
 +    add_subdirectory(src/tools/file_to_c)
 +endif()
  add_subdirectory(src/contrib/re-spirv)
  add_subdirectory(src/contrib/nativefiledialog-extended)
  add_subdirectory(src/contrib/zstd/build/cmake)
-@@ -444,12 +454,20 @@ target_link_libraries(rt64 libzstd_static)
+@@ -444,12 +450,18 @@ target_link_libraries(rt64 libzstd_static)
  target_link_libraries(rt64 plume)
  
  # Add tools.
 -add_subdirectory(src/tools/texture_hasher)
 -add_subdirectory(src/tools/texture_packer)
-+# A superproject that cross-compiles may inject these tools as imported host
-+# executables before adding rt64.
 +if (NOT TARGET texture_hasher)
 +    add_subdirectory(src/tools/texture_hasher)
 +endif()

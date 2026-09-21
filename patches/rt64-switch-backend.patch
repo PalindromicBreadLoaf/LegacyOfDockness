@@ -1,0 +1,240 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 73142e3..6d9d456 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -418,6 +418,15 @@ set (SOURCES
+     "${PROJECT_SOURCE_DIR}/src/contrib/miniz/miniz.c"
+ )
+ 
++if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
++    list(REMOVE_ITEM SOURCES
++        "${PROJECT_SOURCE_DIR}/src/imgui/imgui_impl_sdl2_custom.cpp"
++        "${PROJECT_SOURCE_DIR}/src/contrib/imgui/imgui_demo.cpp"
++        "${PROJECT_SOURCE_DIR}/src/contrib/im3d/im3d.cpp"
++        "${PROJECT_SOURCE_DIR}/src/contrib/implot/implot_demo.cpp"
++    )
++endif()
++
+ include_directories(
+     "${SDL2_INCLUDE_DIRS}"
+     "${PROJECT_SOURCE_DIR}/src"
+diff --git a/src/common/rt64_mapped_file.cpp b/src/common/rt64_mapped_file.cpp
+index c5e9978..9eaf4cd 100644
+--- a/src/common/rt64_mapped_file.cpp
++++ b/src/common/rt64_mapped_file.cpp
+@@ -5,10 +5,14 @@
+ #include "rt64_mapped_file.h"
+ 
+ #if !defined(_WIN32)
++#   include <cerrno>
++#   include <cstdlib>
+ #   include <cstring>
+ #   include <cstdio>
+-#   include <fcntl.h>
+-#   include <unistd.h>
++#   if !defined(__SWITCH__)
++#      include <fcntl.h>
++#      include <unistd.h>
++#   endif
+ #endif
+ 
+ namespace RT64 {
+@@ -33,6 +37,8 @@ namespace RT64 {
+         if (fileHandle != nullptr) {
+             CloseHandle(fileHandle);
+         }
++#   elif defined(__SWITCH__)
++        free(fileView);
+ #   else
+         if (fileView != MAP_FAILED) {
+             munmap(fileView, fileSize);
+@@ -79,6 +85,41 @@ namespace RT64 {
+             return false;
+         }
+ 
++        return true;
++#   elif defined(__SWITCH__)
++        FILE *file = fopen(path.c_str(), "rb");
++        if (file == nullptr) {
++            fprintf(stderr, "fopen for %s failed with error %s.\n", path.c_str(), strerror(errno));
++            return false;
++        }
++
++        fseek(file, 0, SEEK_END);
++        const long fileEnd = ftell(file);
++        fseek(file, 0, SEEK_SET);
++        if (fileEnd <= 0) {
++            fprintf(stderr, "ftell for %s failed with error %s.\n", path.c_str(), strerror(errno));
++            fclose(file);
++            return false;
++        }
++
++        fileView = malloc(size_t(fileEnd));
++        if (fileView == nullptr) {
++            fprintf(stderr, "Unable to allocate %ld bytes for %s.\n", fileEnd, path.c_str());
++            fclose(file);
++            return false;
++        }
++
++        fileSize = fread(fileView, 1, size_t(fileEnd), file);
++        fclose(file);
++
++        if (fileSize != size_t(fileEnd)) {
++            fprintf(stderr, "fread for %s read %zu of %ld bytes.\n", path.c_str(), fileSize, fileEnd);
++            free(fileView);
++            fileView = nullptr;
++            fileSize = 0;
++            return false;
++        }
++
+         return true;
+ #   else
+         fileHandle = ::open(path.c_str(), O_RDONLY);
+@@ -108,7 +149,7 @@ namespace RT64 {
+     }
+ 
+     bool MappedFile::isOpen() const {
+-#   if defined(_WIN32)
++#   if defined(_WIN32) || defined(__SWITCH__)
+         return (fileView != nullptr);
+ #   else
+         return (fileView != MAP_FAILED);
+diff --git a/src/common/rt64_mapped_file.h b/src/common/rt64_mapped_file.h
+index ff1c45a..56fdea4 100644
+--- a/src/common/rt64_mapped_file.h
++++ b/src/common/rt64_mapped_file.h
+@@ -8,7 +8,7 @@
+ 
+ #if defined(_WIN32)
+ #   include <Windows.h>
+-#else
++#elif !defined(__SWITCH__)
+ #   include <sys/mman.h>
+ #endif
+ 
+@@ -19,6 +19,9 @@ namespace RT64 {
+         HANDLE fileMappingHandle = nullptr;
+         LPVOID fileView = nullptr;
+         LARGE_INTEGER fileSize = {};
++#elif defined(__SWITCH__)
++        void *fileView = nullptr;
++        size_t fileSize = 0;
+ #else
+         int fileHandle = -1;
+         void *fileView = MAP_FAILED;
+diff --git a/src/common/rt64_plume.h b/src/common/rt64_plume.h
+index cb33e8e..10c9c28 100644
+--- a/src/common/rt64_plume.h
++++ b/src/common/rt64_plume.h
+@@ -3,3 +3,11 @@
+ #include "plume_render_interface.h"
+ 
+ using namespace plume;
++
++namespace RT64 {
++#ifdef __SWITCH__
++    static constexpr RenderFormat SwapChainFormat = RenderFormat::R8G8B8A8_UNORM;
++#else
++    static constexpr RenderFormat SwapChainFormat = RenderFormat::B8G8R8A8_UNORM;
++#endif
++};
+diff --git a/src/common/rt64_thread.cpp b/src/common/rt64_thread.cpp
+index c4b080b..c7c91d9 100644
+--- a/src/common/rt64_thread.cpp
++++ b/src/common/rt64_thread.cpp
+@@ -47,6 +47,8 @@ namespace RT64 {
+         pthread_setname_np(pthread_self(), str.c_str());
+ #   elif defined(__APPLE__)
+         pthread_setname_np(str.c_str());
++#   elif defined(__SWITCH__)
++        (void)str;
+ #   else
+         static_assert(false, "Unimplemented");
+ #   endif
+@@ -61,6 +63,8 @@ namespace RT64 {
+         // from -20 to 19 (lower being higher priority). However, by strict POSIX spec "nice" is meant to be per-process instead of
+         // per-thread. Therefore to avoid issues in case Linux is modified to match the spec in the future, this function does nothing.
+         (void)priority;
++#   elif defined(__SWITCH__)
++        (void)priority;
+ #   else
+         static_assert(false, "Unimplemented");
+ #   endif
+diff --git a/src/hle/rt64_application.cpp b/src/hle/rt64_application.cpp
+index 785de27..a8a15e6 100644
+--- a/src/hle/rt64_application.cpp
++++ b/src/hle/rt64_application.cpp
+@@ -316,7 +316,7 @@ namespace RT64 {
+         // Create the swap chain with the texture count specified from the configuration.
+         RenderSwapChainDesc swapChainDesc;
+         swapChainDesc.renderWindow = appWindow->windowHandle;
+-        swapChainDesc.format = RenderFormat::B8G8R8A8_UNORM;
++        swapChainDesc.format = SwapChainFormat;
+         swapChainDesc.textureCount = (userConfig.displayBuffering == UserConfiguration::DisplayBuffering::Triple) ? 3 : 2;
+ 
+         // Enable present wait if supported by the device. We specify a max latency of 1 as we use it to wait right before the next
+diff --git a/src/hle/rt64_application_window.cpp b/src/hle/rt64_application_window.cpp
+index 08f83e5..83a8932 100755
+--- a/src/hle/rt64_application_window.cpp
++++ b/src/hle/rt64_application_window.cpp
+@@ -82,6 +82,11 @@ namespace RT64 {
+     void ApplicationWindow::setup(const char *windowTitle, Listener *listener) {
+         assert(windowTitle != nullptr);
+ 
++#   if defined(__SWITCH__)
++        (void)listener;
++        assert(false && "RT64 cannot create its own window on Horizon.");
++#   else
++
+         // Find the right window dimension and placement.
+         const int Width = 1280;
+         const int Height = 720;
+@@ -168,6 +173,7 @@ namespace RT64 {
+         setup(windowHandle, listener, tid);
+ #   else
+         setup(windowHandle, listener, pthread_self());
++#   endif
+ #   endif
+     }
+ 
+@@ -236,6 +242,8 @@ namespace RT64 {
+             SDL_SetWindowFullscreen(windowHandle, 0);
+         }
+         fullScreen = newFullScreen;
++#   elif defined(__SWITCH__)
++        fullScreen = newFullScreen;
+ #   endif
+     }
+ 
+@@ -331,6 +339,8 @@ namespace RT64 {
+         XRRFreeScreenResources(screenResources);
+ #   elif defined(__APPLE__)
+         refreshRate = windowWrapper->getRefreshRate();
++#   elif defined(__SWITCH__)
++        refreshRate = 60;
+ #   endif
+     }
+ 
+@@ -359,6 +369,9 @@ namespace RT64 {
+         windowWrapper->getWindowAttributes(&attributes);
+         newWindowLeft = attributes.x;
+         newWindowTop = attributes.y;
++#   elif defined(__SWITCH__)
++        newWindowLeft = 0;
++        newWindowTop = 0;
+ #   endif
+ 
+         if ((windowLeft != newWindowLeft) || (windowTop != newWindowTop)) {
+diff --git a/src/render/rt64_shader_library.cpp b/src/render/rt64_shader_library.cpp
+index d1c5273..d010eb0 100644
+--- a/src/render/rt64_shader_library.cpp
++++ b/src/render/rt64_shader_library.cpp
+@@ -599,7 +599,7 @@ namespace RT64 {
+             RenderGraphicsPipelineDesc pipelineDesc;
+             pipelineDesc.vertexShader = fullScreenVertexShader.get();
+             pipelineDesc.pixelShader = regularShader.get();
+-            pipelineDesc.renderTargetFormat[0] = RenderFormat::B8G8R8A8_UNORM; // TODO: Use whatever format the swap chain was created with.
++            pipelineDesc.renderTargetFormat[0] = SwapChainFormat;
+             pipelineDesc.renderTargetBlend[0] = RenderBlendDesc::Copy();
+             pipelineDesc.renderTargetCount = 1;
+             pipelineDesc.pipelineLayout = videoInterfaceNearest.pipelineLayout.get();
