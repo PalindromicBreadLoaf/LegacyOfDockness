@@ -82,6 +82,8 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
 
 if (LOD_PLATFORM_SWITCH)
     target_sources(nfd PRIVATE ${CMAKE_SOURCE_DIR}/src/platform/switch/nfd_stub.cpp)
+    target_include_directories(plume PRIVATE ${CMAKE_SOURCE_DIR}/src/platform/switch/volk)
+    target_compile_options(rt64 PRIVATE -include ${CMAKE_SOURCE_DIR}/src/platform/switch/newlib_gaps.h)
 endif()
 
 # ── lunasvg + RmlUi (required by rt64 build chain) ──────────────────
@@ -696,16 +698,16 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/tests/sanity ${CMAKE_BINARY_DIR}/tests/sani
 add_subdirectory(${CMAKE_SOURCE_DIR}/tests/dl_harness ${CMAKE_BINARY_DIR}/tests/dl_harness)
 add_subdirectory(${CMAKE_SOURCE_DIR}/tests/pak ${CMAKE_BINARY_DIR}/tests/pak)
 
-option(LOD_SWITCH_BUILD_LINK_PROBE "Build the Switch SDL2+nxvk link probe .nro" OFF)
-if (LOD_PLATFORM_SWITCH AND LOD_SWITCH_BUILD_LINK_PROBE)
-    add_subdirectory(${CMAKE_SOURCE_DIR}/tests/switch_link_probe
-        ${CMAKE_BINARY_DIR}/tests/switch_link_probe)
-endif()
-
-option(LOD_SWITCH_BUILD_BRINGUP "Build the Switch bring-up .nro (S1.8/M1)" OFF)
+option(LOD_SWITCH_BUILD_BRINGUP "Build the Switch bring-up nro" OFF)
 if (LOD_PLATFORM_SWITCH AND LOD_SWITCH_BUILD_BRINGUP)
     add_subdirectory(${CMAKE_SOURCE_DIR}/tests/switch_bringup
         ${CMAKE_BINARY_DIR}/tests/switch_bringup)
+endif()
+
+option(LOD_SWITCH_BUILD_TRIANGLE "Build the Switch plume triangle nro" OFF)
+if (LOD_PLATFORM_SWITCH AND LOD_SWITCH_BUILD_TRIANGLE)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/tests/switch_triangle
+        ${CMAKE_BINARY_DIR}/tests/switch_triangle)
 endif()
 
 # ── DXC shader compilation (required by rt64) ───────────────────────
