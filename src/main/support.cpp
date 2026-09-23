@@ -1,4 +1,7 @@
 #include "lod/lod_support.h"
+
+#include <cstdio>
+
 #include <SDL.h>
 
 namespace lod {
@@ -17,7 +20,11 @@ namespace lod {
     }
 
     void show_error_message_box(const char *title, const char *message) {
-#ifdef __APPLE__
+        fprintf(stderr, "[ERROR] %s: %s\n", title, message);
+#if defined(__SWITCH__)
+        (void)title;
+        (void)message;
+#elif defined(__APPLE__)
         std::string title_copy(title);
         std::string message_copy(message);
         dispatch_on_ui_thread([title_copy, message_copy] {

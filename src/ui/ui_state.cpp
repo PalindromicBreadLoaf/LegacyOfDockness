@@ -242,8 +242,11 @@ public:
         // Apply the hack to replace RmlUi's default color parser with one that conforms to HTML5 alpha parsing for SASS compatibility
         recompui::apply_color_hack();
 
-        int width, height;
-        SDL_GetWindowSizeInPixels(window, &width, &height);
+        int width = 1280;
+        int height = 720;
+        if (window != nullptr) {
+            SDL_GetWindowSizeInPixels(window, &width, &height);
+        }
 
         context = Rml::CreateContext("main", Rml::Vector2i(width, height));
         launcher_menu_controller->make_bindings(context);
@@ -484,7 +487,11 @@ std::recursive_mutex ui_state_mutex{};
 extern SDL_Window* window;
 
 void recompui::get_window_size(int& width, int& height) {
-    SDL_GetWindowSizeInPixels(window, &width, &height);
+    width = 1280;
+    height = 720;
+    if (window != nullptr) {
+        SDL_GetWindowSizeInPixels(window, &width, &height);
+    }
 }
 
 inline const std::string read_file_to_string(std::filesystem::path path) {
@@ -977,8 +984,10 @@ void recompui::set_render_hooks() {
 }
 
 void recompui::message_box(const char* msg) {
+    fprintf(stderr, "[ERROR] %s\n", msg);
+#ifndef __SWITCH__
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, zelda64::program_name.data(), msg, nullptr);
-    printf("[ERROR] %s\n", msg);
+#endif
 }
 
 void recompui::show_context(ContextId context, std::string_view param) {

@@ -104,7 +104,7 @@ class RmlRenderInterface_RT64_impl : public Rml::RenderInterfaceCompatibility {
     static constexpr uint32_t initial_index_buffer_size = 1024 * sizeof(int);
     static constexpr RenderFormat RmlTextureFormat = RenderFormat::R8G8B8A8_UNORM;
     static constexpr RenderFormat RmlTextureFormatBgra = RenderFormat::B8G8R8A8_UNORM;
-    static constexpr RenderFormat SwapChainFormat = RenderFormat::B8G8R8A8_UNORM;
+    static constexpr RenderFormat SwapChainFormat = RT64::SwapChainFormat;
     static constexpr uint32_t RmlTextureFormatBytesPerPixel = RenderFormatSize(RmlTextureFormat);
     static_assert(RenderFormatSize(RmlTextureFormatBgra) == RmlTextureFormatBytesPerPixel);
     RenderInterface* interface_;

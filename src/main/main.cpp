@@ -1134,7 +1134,8 @@ static void save_controls_config(const ControlsConfig& config) {
 
     std::ofstream f(controls_config_path());
     if (!f) {
-        fprintf(stderr, "[CONFIG] Failed to write %s\n", controls_config_path().string().c_str());
+        fprintf(stderr, "[CONFIG] Failed to write %s: %s\n",
+            controls_config_path().string().c_str(), std::strerror(errno));
         return;
     }
     f << controls_config_to_json(config).dump(2) << "\n";
@@ -1331,7 +1332,8 @@ static void save_graphics_config(const ultramodern::renderer::GraphicsConfig& co
 
     std::ofstream f(graphics_config_path());
     if (!f) {
-        fprintf(stderr, "[CONFIG] Failed to write %s\n", graphics_config_path().string().c_str());
+        fprintf(stderr, "[CONFIG] Failed to write %s: %s\n",
+            graphics_config_path().string().c_str(), std::strerror(errno));
         return;
     }
     f << graphics_config_to_json(config).dump(2) << "\n";
@@ -1540,7 +1542,8 @@ static void save_audio_config(const lod::settings::AudioConfig& config) {
 
     std::ofstream f(audio_config_path());
     if (!f) {
-        fprintf(stderr, "[CONFIG] Failed to write %s\n", audio_config_path().string().c_str());
+        fprintf(stderr, "[CONFIG] Failed to write %s: %s\n",
+            audio_config_path().string().c_str(), std::strerror(errno));
         return;
     }
     f << audio_config_to_json(config).dump(2) << "\n";

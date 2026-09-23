@@ -1830,7 +1830,10 @@ void zelda64::process_pending_file_dialogs() {
 }
 
 void zelda64::show_error_message_box(const char* title, const char* message) {
+    fprintf(stderr, "[ERROR] %s: %s\n", title, message);
+#ifndef __SWITCH__
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, message, nullptr);
+#endif
 }
 
 void zelda64::save_config() {

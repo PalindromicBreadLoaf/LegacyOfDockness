@@ -137,7 +137,7 @@ std::atomic_bool g_rom_busy{false};
 
 constexpr RenderFormat kRmlTextureFormat = RenderFormat::R8G8B8A8_UNORM;
 constexpr RenderFormat kRmlTextureFormatBgra = RenderFormat::B8G8R8A8_UNORM;
-constexpr RenderFormat kSwapChainFormat = RenderFormat::B8G8R8A8_UNORM;
+constexpr RenderFormat kSwapChainFormat = RT64::SwapChainFormat;
 constexpr uint32_t kTextureBytesPerPixel = RenderFormatSize(kRmlTextureFormat);
 static_assert(RenderFormatSize(kRmlTextureFormatBgra) == kTextureBytesPerPixel);
 

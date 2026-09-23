@@ -77,6 +77,7 @@ void flush_log() {
     std::fflush(stderr);
     if (g_log_file != nullptr) {
         std::fflush(g_log_file);
+        fsync(fileno(g_log_file));
     }
 }
 u64 g_core_mask = 0;
@@ -95,6 +96,10 @@ const char* exception_desc_name(u32 desc) {
         case ThreadExceptionDesc_Other: return "data abort";
         default: return "unknown";
     }
+}
+
+_ssize_t forward_to_stderr(struct _reent*, void*, const char* data, size_t length) {
+    return static_cast<_ssize_t>(std::fwrite(data, 1, length, stderr));
 }
 
 void open_log(const std::filesystem::path& log_path) {
@@ -116,8 +121,9 @@ void open_log(const std::filesystem::path& log_path) {
     const int log_fd = fileno(g_log_file);
     dup2(log_fd, STDOUT_FILENO);
     dup2(log_fd, STDERR_FILENO);
-    setvbuf(stdout, nullptr, _IONBF, 0);
-    setvbuf(stderr, nullptr, _IONBF, 0);
+    setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
+    setvbuf(stderr, nullptr, _IOLBF, BUFSIZ);
+    stdout->_write = forward_to_stderr;
 }
 
 void report_memory(const char* label) {
@@ -409,6 +415,8 @@ extern "C" int __syscall_thread_detach(pthread_t thread) {
 
 bool lod::sw::applet_pump() {
     if (!appletMainLoop()) {
+        fprintf(stderr, "[SWITCH] appletMainLoop() asked us to exit\n");
+        flush_log();
         return false;
     }
 
