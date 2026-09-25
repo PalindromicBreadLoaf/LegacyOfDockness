@@ -1213,6 +1213,7 @@ static ControlsConfig load_controls_config() {
 #endif
     }
 
+    f.close();
     save_controls_config(config);
     return config;
 }
@@ -1358,6 +1359,7 @@ static ultramodern::renderer::GraphicsConfig load_graphics_config() {
         config = default_graphics_config();
     }
 
+    f.close();
     save_graphics_config(config);
     return config;
 }
@@ -1570,6 +1572,7 @@ static lod::settings::AudioConfig load_audio_config() {
     }
 
     set_audio_runtime_config(config);
+    f.close();
     save_audio_config(config);
     return config;
 }
