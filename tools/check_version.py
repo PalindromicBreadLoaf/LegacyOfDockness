@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$")
 HARDCODED_VERSION_RE = re.compile(r"\b[0-9]+\.[0-9]+\.[0-9]+\b")
 
 
@@ -25,7 +25,7 @@ def main() -> int:
         return fail("VERSION file is missing")
 
     if not VERSION_RE.fullmatch(version):
-        return fail(f"VERSION must contain MAJOR.MINOR.PATCH, got {version!r}")
+        return fail(f"VERSION must contain MAJOR.MINOR.PATCH[-SUFFIX], got {version!r}")
 
     ref_type = os.environ.get("GITHUB_REF_TYPE", "")
     ref_name = os.environ.get("GITHUB_REF_NAME", "")

@@ -6,15 +6,16 @@ endif()
 
 file(READ "${CMAKE_SOURCE_DIR}/VERSION" LOD_RECOMP_VERSION)
 string(STRIP "${LOD_RECOMP_VERSION}" LOD_RECOMP_VERSION)
-if (NOT LOD_RECOMP_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
-    message(FATAL_ERROR "VERSION must contain MAJOR.MINOR.PATCH, got '${LOD_RECOMP_VERSION}'")
+if (NOT LOD_RECOMP_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)(-[0-9A-Za-z.-]+)?$")
+    message(FATAL_ERROR "VERSION must contain MAJOR.MINOR.PATCH[-SUFFIX], got '${LOD_RECOMP_VERSION}'")
 endif()
-string(REPLACE "." ";" LOD_RECOMP_VERSION_PARTS "${LOD_RECOMP_VERSION}")
-list(GET LOD_RECOMP_VERSION_PARTS 0 LOD_RECOMP_VERSION_MAJOR)
-list(GET LOD_RECOMP_VERSION_PARTS 1 LOD_RECOMP_VERSION_MINOR)
-list(GET LOD_RECOMP_VERSION_PARTS 2 LOD_RECOMP_VERSION_PATCH)
+set(LOD_RECOMP_VERSION_MAJOR ${CMAKE_MATCH_1})
+set(LOD_RECOMP_VERSION_MINOR ${CMAKE_MATCH_2})
+set(LOD_RECOMP_VERSION_PATCH ${CMAKE_MATCH_3})
 
-project(LodRecomp VERSION ${LOD_RECOMP_VERSION} LANGUAGES C CXX)
+project(LodRecomp
+    VERSION ${LOD_RECOMP_VERSION_MAJOR}.${LOD_RECOMP_VERSION_MINOR}.${LOD_RECOMP_VERSION_PATCH}
+    LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -713,14 +714,31 @@ add_custom_target(LodRecompAssets
 add_dependencies(LodRecomp LodRecompAssets)
 
 if (LOD_PLATFORM_SWITCH)
+    string(REPLACE "-switch" "" LOD_SWITCH_NACP_VERSION "${LOD_RECOMP_VERSION}")
+    string(LENGTH "${LOD_SWITCH_NACP_VERSION}" LOD_SWITCH_NACP_VERSION_LENGTH)
+    if (LOD_SWITCH_NACP_VERSION_LENGTH GREATER 15)
+        message(FATAL_ERROR "NACP version '${LOD_SWITCH_NACP_VERSION}' is longer than 15 characters")
+    endif()
     nx_generate_nacp(LodRecomp.nacp
         NAME "Castlevania: Legacy of Darkness Recompiled"
         AUTHOR "PalindromicBreadLoaf"
-        VERSION "${LOD_RECOMP_VERSION}"
+        VERSION "${LOD_SWITCH_NACP_VERSION}"
+    )
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(LOD_SWITCH_ROMFS_DIR "${CMAKE_BINARY_DIR}/romfs")
+    add_custom_target(LodRecompRomfs
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${LOD_SWITCH_ROMFS_DIR}"
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/copy_release_assets.py" "${LOD_SWITCH_ROMFS_DIR}"
+        COMMENT "Staging Switch romfs assets"
+    )
+    set_target_properties(LodRecompRomfs PROPERTIES
+        DKP_ASSET_FOLDER "${LOD_SWITCH_ROMFS_DIR}"
+        DKP_ASSET_FILES ""
     )
     nx_create_nro(LodRecomp
         NACP LodRecomp.nacp
-        ROMFS ${CMAKE_SOURCE_DIR}/assets
+        ICON "${CMAKE_SOURCE_DIR}/src/platform/switch/icon.jpg"
+        ROMFS LodRecompRomfs
     )
 endif()
 
