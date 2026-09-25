@@ -2299,6 +2299,24 @@ static inline bool lod_ai_buffer_phys(uint32_t addr, uint32_t size, uint32_t* ph
     return true;
 }
 
+static inline uint64_t lod_ai_buffer_hash(uint8_t* rdram, uint32_t phys, uint32_t bytes) {
+    uint64_t hash = 0xCBF29CE484222325ull;
+    for (uint32_t offset = 0; offset < bytes; offset++) {
+        hash = (hash ^ rdram[phys + offset]) * 0x100000001B3ull;
+    }
+    return hash;
+}
+
+// audioTask_build re-queues the last buffer when it skips a frame to drain a backlog; real
+// hardware rejects that with the AI FIFO full, so drop it instead of playing it twice.
+#ifndef LOD_DROP_REPEATED_AI_BUFFER
+#ifdef __SWITCH__
+#define LOD_DROP_REPEATED_AI_BUFFER 1
+#else
+#define LOD_DROP_REPEATED_AI_BUFFER 0
+#endif
+#endif
+
 // LoD can pass a low/physical RDRAM address to osAiSetNextBuffer. The
 // ultramodern runtime helper expects a KSEG0/KSEG1-style pointer and otherwise
 // maps low 0x00xxxxxx addresses to rdram+0x80xxxxxx, which faults past RDRAM.
@@ -2336,6 +2354,17 @@ void lod_osAiSetNextBuffer_recomp(uint8_t* rdram, recomp_context* ctx) {
                     normalize_count, raw, kseg0, phys, bytes);
         }
     }
+#endif
+#if LOD_DROP_REPEATED_AI_BUFFER
+    static uint32_t last_queued_kseg0 = 0;
+    static uint64_t last_queued_hash = 0;
+    const uint64_t hash = lod_ai_buffer_hash(rdram, phys, bytes);
+    if (kseg0 == last_queued_kseg0 && hash == last_queued_hash) {
+        ctx->r2 = -1;
+        return;
+    }
+    last_queued_kseg0 = kseg0;
+    last_queued_hash = hash;
 #endif
     ultramodern::queue_audio_buffer(rdram, (PTR(int16_t))kseg0, bytes);
     ctx->r2 = 0;

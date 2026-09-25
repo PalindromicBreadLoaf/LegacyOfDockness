@@ -97,6 +97,14 @@
 #define LOD_ENABLE_AUDIO_LATENCY_GUARD 0
 #endif
 
+#ifndef LOD_ENABLE_AUDIO_STREAM_RESAMPLER
+#ifdef __SWITCH__
+#define LOD_ENABLE_AUDIO_STREAM_RESAMPLER 1
+#else
+#define LOD_ENABLE_AUDIO_STREAM_RESAMPLER 0
+#endif
+#endif
+
 #ifndef LOD_ENABLE_RUNTIME_HEARTBEAT_LOGS
 #define LOD_ENABLE_RUNTIME_HEARTBEAT_LOGS 0
 #endif
@@ -1922,6 +1930,11 @@ static uint32_t output_channels = 2;
 constexpr uint32_t duplicated_input_frames = 4;
 static uint32_t discarded_output_frames;
 constexpr uint32_t bytes_per_frame = input_channels * sizeof(float);
+#ifdef __SWITCH__
+constexpr Uint16 device_buffer_frames = 0x200;
+#else
+constexpr Uint16 device_buffer_frames = 0x100;
+#endif
 
 const char* audio_format_name(SDL_AudioFormat format) {
     switch (format) {
@@ -1946,15 +1959,88 @@ void log_audio_spec(const char* label, const SDL_AudioSpec& spec) {
             (unsigned)spec.channels, (unsigned)spec.samples, spec.size);
 }
 
+#if LOD_ENABLE_AUDIO_RAW_DUMP
+static FILE* open_audio_dump(const char* name) {
+#ifdef __SWITCH__
+    const std::string path = std::string("sdmc:/switch/lodrecomp/") + name;
+#else
+    const std::string path = std::string("/tmp/") + name;
+#endif
+    (void)std::remove(path.c_str());
+    FILE* file = std::fopen(path.c_str(), "wb");
+    if (file != nullptr) {
+        std::setvbuf(file, nullptr, _IOFBF, 1 << 20);
+    }
+    fprintf(stderr, "[AUDIO] raw dump %s %s\n", path.c_str(), file != nullptr ? "opened" : "FAILED");
+    return file;
+}
+#endif
+
+#if LOD_ENABLE_AUDIO_STREAM_RESAMPLER
+static SDL_AudioStream* audio_stream = nullptr;
+static uint32_t audio_stream_input_rate = 0;
+static uint32_t audio_stream_output_rate = 0;
+
+static void update_audio_stream() {
+    if (audio_stream != nullptr && audio_stream_input_rate == sample_rate &&
+        audio_stream_output_rate == output_sample_rate) {
+        return;
+    }
+    if (audio_stream != nullptr) {
+        SDL_FreeAudioStream(audio_stream);
+    }
+    audio_stream = SDL_NewAudioStream(AUDIO_F32, input_channels, sample_rate,
+                                      AUDIO_F32, output_channels, output_sample_rate);
+    if (audio_stream == nullptr) {
+        fprintf(stderr, "[AUDIO] SDL_NewAudioStream %u -> %u failed: %s\n",
+                sample_rate, output_sample_rate, SDL_GetError());
+        audio_stream_input_rate = 0;
+        audio_stream_output_rate = 0;
+        return;
+    }
+    audio_stream_input_rate = sample_rate;
+    audio_stream_output_rate = output_sample_rate;
+    fprintf(stderr, "[AUDIO] resampler stream %u -> %u\n", sample_rate, output_sample_rate);
+}
+
+static uint32_t resample_through_stream(const int16_t* audio_data, size_t sample_count,
+                                        float sample_scale, float** samples_out) {
+    static std::vector<float> input_buffer;
+    static std::vector<float> output_buffer;
+
+    if (audio_stream == nullptr) {
+        return 0;
+    }
+
+    input_buffer.resize(sample_count);
+    for (size_t i = 0; i < sample_count; i += input_channels) {
+        input_buffer[i + 0] = audio_data[i + 1] * sample_scale;
+        input_buffer[i + 1] = audio_data[i + 0] * sample_scale;
+    }
+    SDL_AudioStreamPut(audio_stream, input_buffer.data(), int(sample_count * sizeof(float)));
+
+    const int available_bytes = SDL_AudioStreamAvailable(audio_stream);
+    output_buffer.resize(available_bytes / sizeof(float));
+    const int received_bytes = SDL_AudioStreamGet(audio_stream, output_buffer.data(), available_bytes);
+    *samples_out = output_buffer.data();
+    return received_bytes > 0 ? uint32_t(received_bytes) : 0;
+}
+#endif
+
 void update_audio_converter() {
     SDL_BuildAudioCVT(&audio_convert, AUDIO_F32, input_channels, sample_rate,
                        AUDIO_F32, output_channels, output_sample_rate);
     discarded_output_frames = duplicated_input_frames * output_sample_rate / sample_rate;
+#if LOD_ENABLE_AUDIO_STREAM_RESAMPLER
+    update_audio_stream();
+#endif
 }
 
 void queue_samples(int16_t* audio_data, size_t sample_count) {
+#if !LOD_ENABLE_AUDIO_STREAM_RESAMPLER
     static std::vector<float> swap_buffer;
     static std::array<float, duplicated_input_frames * input_channels> duplicated_sample_buffer;
+#endif
 
 #if LOD_ENABLE_AUDIO_TRACE
     static uint32_t queue_count = 0;
@@ -1985,17 +2071,25 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
 
 #if LOD_ENABLE_AUDIO_RAW_DUMP
     {
-        static FILE* raw_dump = []() -> FILE* {
-            (void)std::remove("/tmp/lod_audio_queue_s16le.raw");
-            return std::fopen("/tmp/lod_audio_queue_s16le.raw", "ab");
-        }();
+        static FILE* raw_dump = open_audio_dump("lod_audio_queue_s16le.raw");
         if (raw_dump != nullptr && sample_count > 0) {
             std::fwrite(audio_data, sizeof(int16_t), sample_count, raw_dump);
-            std::fflush(raw_dump);
         }
     }
 #endif
 
+    const float master_gain = g_audio_muted.load(std::memory_order_relaxed)
+        ? 0.0f
+        : std::clamp(g_audio_master_volume_percent.load(std::memory_order_relaxed), 0, 100) / 100.0f;
+    const float sample_scale = master_gain * (1.0f / 32768.0f);
+
+#if LOD_ENABLE_AUDIO_STREAM_RESAMPLER
+    float* samples_to_queue = nullptr;
+    uint32_t num_bytes_to_queue = resample_through_stream(audio_data, sample_count, sample_scale, &samples_to_queue);
+    if (num_bytes_to_queue == 0) {
+        return;
+    }
+#else
     size_t resampled_sample_count = sample_count + duplicated_input_frames * input_channels;
     size_t max_sample_count = std::max(resampled_sample_count, resampled_sample_count * audio_convert.len_mult);
     if (max_sample_count > swap_buffer.size()) {
@@ -2005,11 +2099,6 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
     for (size_t i = 0; i < duplicated_input_frames * input_channels; i++) {
         swap_buffer[i] = duplicated_sample_buffer[i];
     }
-
-    const float master_gain = g_audio_muted.load(std::memory_order_relaxed)
-        ? 0.0f
-        : std::clamp(g_audio_master_volume_percent.load(std::memory_order_relaxed), 0, 100) / 100.0f;
-    const float sample_scale = master_gain * (1.0f / 32768.0f);
 
     for (size_t i = 0; i < sample_count; i += input_channels) {
         swap_buffer[i + 0 + duplicated_input_frames * input_channels] = audio_data[i + 1] * sample_scale;
@@ -2028,6 +2117,7 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
 
     uint32_t num_bytes_to_queue = audio_convert.len_cvt - output_channels * discarded_output_frames * sizeof(swap_buffer[0]);
     float* samples_to_queue = swap_buffer.data() + output_channels * discarded_output_frames / 2;
+#endif
 
 #if LOD_ENABLE_AUDIO_LATENCY_GUARD
     const uint64_t queued_microseconds =
@@ -2038,7 +2128,7 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
     }
     if (skip_factor != 0) {
         const uint32_t skip_ratio = 1u << skip_factor;
-        const uint32_t frame_size = output_channels * sizeof(swap_buffer[0]);
+        const uint32_t frame_size = output_channels * sizeof(float);
         const uint32_t original_frame_count = num_bytes_to_queue / frame_size;
         const uint32_t decimated_frame_count = original_frame_count / skip_ratio;
 
@@ -2115,7 +2205,7 @@ void reset_audio(uint32_t output_freq) {
         .format = AUDIO_F32,
         .channels = (Uint8)output_channels,
         .silence = 0,
-        .samples = 0x100,
+        .samples = device_buffer_frames,
         .padding = 0,
         .size = 0,
         .callback = nullptr,

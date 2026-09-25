@@ -283,8 +283,9 @@ graphThread_submitGFX      = 0x80017EC0; // type:func  // main frame render func
 createGraphicTasks         = 0x80019034; // type:func  // builds GFX task struct, submits to scheduler
 createGraphicTasks_overlay = 0x80000A30; // type:func  // GFX task from overlay/recomp entry
 video_init                 = 0x80091108; // type:func  // video init (called on PRE-NMI signal)
-audioTask_build            = 0x80090744; // type:func  // audio task builder, called from main thread
-mainThread_entrypoint      = 0x800905D8; // type:func  // main game logic thread
+audioTask_build            = 0x80090744; // type:func  // audio task builder, called from audioManager_main
+audioManager_main          = 0x800905D8; // type:func  // audio thread
+audioManager_handleDoneMsg = 0x800908EC; // type:func  // audio task done handler
 
 // Controller Pak / Input
 contpak_init               = 0x800195E0; // type:func  // PADMGR init, calls osContInit

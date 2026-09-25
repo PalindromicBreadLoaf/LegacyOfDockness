@@ -10,6 +10,9 @@
 
 #include <switch.h>
 
+#include <SDL_error.h>
+#include <SDL_thread.h>
+
 #ifndef LOD_SWITCH_HEAP_MB
 #define LOD_SWITCH_HEAP_MB 0
 #endif
@@ -190,8 +193,8 @@ int preferred_core_for(const std::string& name) {
         return 2;  // graphics submission
     }
     if (name == "Main Thread" || name == "SP Task Thread" ||
-        name == "VI Thread" || name == "Timer Thread") {
-        return 0;  // applet pump, audio RSP and frame timing
+        name == "VI Thread" || name == "Timer Thread" || name == "SDL Audio") {
+        return 0;  // applet pump, audio RSP and output, frame timing
     }
     return kCoreFloating;
 }
@@ -382,6 +385,26 @@ void lod::sw::place_current_thread(const std::string& thread_name) {
 
 extern "C" void rt64_switch_place_thread(const char* name) {
     lod::sw::place_current_thread(name);
+}
+
+constexpr u32 kAudioThreadPriority = 0x27;
+
+extern "C" int __real_SDL_SetThreadPriority(SDL_ThreadPriority priority);
+
+extern "C" int __wrap_SDL_SetThreadPriority(SDL_ThreadPriority priority) {
+    if (priority != SDL_THREAD_PRIORITY_TIME_CRITICAL) {
+        return __real_SDL_SetThreadPriority(priority);
+    }
+
+    lod::sw::place_current_thread("SDL Audio");
+    const Result rc = svcSetThreadPriority(CUR_THREAD_HANDLE, kAudioThreadPriority);
+    if (R_FAILED(rc)) {
+        fprintf(stderr, "[THREAD] SDL Audio: failed to set priority 0x%X (rc=0x%X)\n",
+                kAudioThreadPriority, rc);
+        return SDL_SetError("svcSetThreadPriority failed: 0x%x", rc);
+    }
+    fprintf(stderr, "[THREAD] SDL Audio priority 0x%X\n", kAudioThreadPriority);
+    return 0;
 }
 
 namespace {
