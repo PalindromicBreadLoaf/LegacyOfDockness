@@ -536,10 +536,11 @@ void lod_on_init(uint8_t* rdram, recomp_context* ctx) {
                 ext_rom_path = "resources/castlevania2_ni_extended.z64";
             }
         }
-        if (std::filesystem::exists(ext_rom_path)) {
+        if (!ext_rom_path.empty() && std::filesystem::exists(ext_rom_path)) {
             std::ifstream ef(ext_rom_path, std::ios::binary);
             ef.seekg(0, std::ios::end);
-            size_t ext_rom_size = ef.tellg();
+            std::streamoff ext_rom_end = ef ? static_cast<std::streamoff>(ef.tellg()) : 0;
+            size_t ext_rom_size = ext_rom_end > 0 ? static_cast<size_t>(ext_rom_end) : 0;
             if (ext_rom_size > 0x01000000) {
                 size_t ext_start = 0x01000000;
                 size_t ext_size = ext_rom_size - ext_start;
